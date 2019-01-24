@@ -93,9 +93,9 @@ def train_model(train_x, train_y, learning_rate, epochs):
             for (x_data, y_data) in zip(train_x, train_y):
                 sess.run(optimizer, feed_dict={x: x_data, y: y_data})
 
-                # 用于tensor board
-                summary_str = sess.run(merged_summary_op, feed_dict={x: x_data, y: y_data})
-                summary_writer.add_summary(summary_str, epoch)
+            # 用于tensor board
+            summary_str = sess.run(merged_summary_op, feed_dict={x: x_data, y: y_data})
+            summary_writer.add_summary(summary_str, epoch)
 
             if epoch % FLAGS.verbose == 0:
                 # 根据设置的信息展示级别，打印和记录中间训练结果及损失信息
