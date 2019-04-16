@@ -29,3 +29,8 @@ output
 
 #VSCode
 .vscode
+
+#execute files
+model*
+data
+
