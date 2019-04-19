@@ -21,6 +21,9 @@
 # 震惊，4组数据就训练个模型出来。
 # 书上给出的10,000次迭代不行，需要更多万次迭代后，再反复运行。看loss数据，判断是进入了局部最优。
 #
+# 190419:
+# 修改隐藏层的节点数，可以大幅降低迭代次数
+#
 # ======================================================================================
 import tensorflow as tf
 from absl import app
@@ -33,7 +36,7 @@ class Model(object):
         # 输入层节点个数
         self.input_count = 2
         # 隐藏层节点个数
-        self.hidden_count = 2
+        self.hidden_count = 10
         # 标签节点个数
         self.label_count = 1
 
@@ -78,7 +81,7 @@ def main(argv):
     x = np.array([[0, 0], [0, 1], [1, 0], [1, 1]]).astype('float32')
     y = np.array([[0], [1], [1], [0]]).astype("int16")
     train_model = Model(0.0001)
-    train_model.training(x, y, 400000)
+    train_model.training(x, y, 50000)
 
 
 if __name__ == '__main__':
