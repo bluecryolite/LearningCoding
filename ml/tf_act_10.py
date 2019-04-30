@@ -67,8 +67,8 @@ class Model(object):
         self.batchY_placeholder = tf.placeholder(tf.int32, [batch_size, truncated_backprop_length])
         self.init_state = tf.placeholder(tf.float32, [batch_size, state_size])
 
-        inputs_series = tf.unstack(tf.unstack(self.batchX_placeholder, axis=1))
-        labels_series = tf.unstack(tf.unstack(self.batchY_placeholder, axis=1))
+        inputs_series = tf.unstack(self.batchX_placeholder, axis=1)
+        labels_series = tf.unstack(self.batchY_placeholder, axis=1)
 
         self.current_state = self.init_state
         self.predictions_series = []
