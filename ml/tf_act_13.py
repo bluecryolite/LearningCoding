@@ -18,12 +18,14 @@
 # ======================================================================================
 # 笔记
 #
+# 190430:
+# 子类的init中，self要先赋值，再调用父类的init，否则子类的self没搞起事
+#
 #
 # ======================================================================================
 import tensorflow as tf
 from absl import app, flags
 import os
-import numpy as np
 import pylab
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -106,6 +108,7 @@ class Model(object):
 
 
 class SingleLSTM(Model):
+
     def create_model(self):
         x1 = tf.unstack(self.x, self.input_size, axis=1)
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_count, forget_bias=1.0)
@@ -114,6 +117,7 @@ class SingleLSTM(Model):
 
 
 class SingleGRU(Model):
+
     def create_model(self):
         x1 = tf.unstack(self.x, self.input_size, axis=1)
         gru = tf.nn.rnn_cell.GRUCell(self.hidden_count)
@@ -121,15 +125,52 @@ class SingleGRU(Model):
         return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
 
 
-def generate_data(point_count, echo_step, batch_size):
-    x = np.array(np.random.choice(2, point_count, p=[0.5, 0.5]))
-    y = np.roll(x, echo_step)
-    y[0:echo_step] = 0
+class SingleDynamicGRU(Model):
 
-    x = x.reshape((batch_size, -1))
-    y = y.reshape((batch_size, -1))
+    def create_model(self):
+        gru = tf.nn.rnn_cell.GRUCell(self.hidden_count)
+        outputs, _ = tf.nn.dynamic_rnn(gru, self.x, dtype=tf.float32)
+        outputs = tf.transpose(outputs, [1, 0, 2])
+        return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
 
-    return x, y
+
+class MutilLSTM(Model):
+
+    def __init__(self, learning_rate, hidden_layer_count):
+        self.hidden_layer_count = hidden_layer_count
+        super(MutilLSTM, self).__init__(learning_rate)
+
+    def create_model(self):
+        x1 = tf.unstack(self.x, self.input_size, 1)
+        stacked_rnn = []
+        for i in range(self.hidden_layer_count):
+            stacked_rnn.append(tf.nn.rnn_cell.LSTMCell(self.hidden_count))
+        mcell = tf.nn.rnn_cell.MultiRNNCell(stacked_rnn)
+
+        outputs, states = tf.nn.static_rnn(mcell, x1, dtype=tf.float32)
+        return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
+
+
+class MutilLSTMAndGRU(Model):
+
+    def create_model(self):
+        x1 = tf.unstack(self.x, self.input_size, axis=1)
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_count, forget_bias=1.0)
+        gru = tf.nn.rnn_cell.GRUCell(self.hidden_count * 2)
+        mcell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell, gru])
+        outputs, states = tf.nn.static_rnn(mcell, x1, dtype=tf.float32)
+        return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
+
+
+class MutilDynamicLSTMAndGRU(Model):
+
+    def create_model(self):
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_count, forget_bias=1.0)
+        gru = tf.nn.rnn_cell.GRUCell(self.hidden_count * 2)
+        mcell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell, gru])
+        outputs, states = tf.nn.dynamic_rnn(mcell, self.x, dtype=tf.float32)
+        outputs = tf.transpose(outputs, [1, 0, 2])
+        return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
 
 
 def main(argv):
@@ -144,9 +185,25 @@ def main(argv):
     # single_lstm.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
     # single_lstm.estimate(mnist.test)
 
-    single_gru = SingleGRU(FLAGS.learning_rate)
-    single_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
-    single_gru.estimate(mnist.test)
+    # single_gru = SingleGRU(FLAGS.learning_rate)
+    # single_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
+    # single_gru.estimate(mnist.test)
+
+    # single_dynamic_gru = SingleDynamicGRU(FLAGS.learning_rate)
+    # single_dynamic_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
+    # single_dynamic_gru.estimate(mnist.test)
+
+    # mutil_lstm = MutilLSTM(FLAGS.learning_rate, 3)
+    # mutil_lstm.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
+    # mutil_lstm.estimate(mnist.test)
+
+    # mutil_lstm_gru = MutilLSTMAndGRU(FLAGS.learning_rate)
+    # mutil_lstm_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
+    # mutil_lstm_gru.estimate(mnist.test)
+
+    mutil_dynamic_lstm_gru = MutilDynamicLSTMAndGRU(FLAGS.learning_rate)
+    mutil_dynamic_lstm_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
+    mutil_dynamic_lstm_gru.estimate(mnist.test)
 
 
 if __name__ == '__main__':
