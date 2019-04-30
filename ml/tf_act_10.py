@@ -29,7 +29,7 @@ import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 
-default_model_dir = os.path.abspath('./model_tf_act_08/')
+default_model_dir = os.path.abspath('./model_tf_act_10/')
 
 flags.DEFINE_integer('verbose', 100, 'How much debug info to print.')
 flags.DEFINE_string('model_dir', default_model_dir, 'Path to saving model files.')
@@ -90,7 +90,7 @@ class Model(object):
         self.optimizer = tf.train.AdagradOptimizer(learning_rate).minimize(self.total_loss)
 
     def train(self, features, labels, epochs, loss_list, echo_step):
-        file_path = FLAGS.model_dir + 'tf_act_10'
+        file_path = FLAGS.model_dir + '/tf_act_10'
         with tf.Session() as sess:
             saver = tf.train.Saver()
             if os.path.exists(FLAGS.model_dir):
