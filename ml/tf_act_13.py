@@ -125,11 +125,43 @@ class SingleGRU(Model):
         return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
 
 
+class SingleBidirectionalRNN(Model):
+
+    def __init__(self, learning_rate):
+        tf.reset_default_graph()
+        super(SingleBidirectionalRNN, self).__init__(learning_rate=learning_rate)
+
+    def create_model(self):
+        x1 = tf.unstack(self.x, self.input_size, 1)
+        lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_count, forget_bias=1.0)
+        lstm_bw_cell = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_count, forget_bias=1.0)
+        outputs, _, _ = tf.nn.static_bidirectional_rnn(lstm_fw_cell, lstm_bw_cell, x1, dtype=tf.float32)
+        print(outputs[0].shape, len(outputs))
+        return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
+
+
 class SingleDynamicGRU(Model):
 
     def create_model(self):
         gru = tf.nn.rnn_cell.GRUCell(self.hidden_count)
         outputs, _ = tf.nn.dynamic_rnn(gru, self.x, dtype=tf.float32)
+        outputs = tf.transpose(outputs, [1, 0, 2])
+        return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
+
+
+class SingleDynamicBidirectionalRNN(Model):
+
+    def __init__(self, learning_rate):
+        tf.reset_default_graph()
+        super(SingleDynamicBidirectionalRNN, self).__init__(learning_rate=learning_rate)
+
+    def create_model(self):
+        lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_count, forget_bias=1.0)
+        lstm_bw_cell = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_count, forget_bias=1.0)
+        outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, self.x, dtype=tf.float32)
+        print(outputs[0].shape, len(outputs))
+
+        outputs = tf.concat(outputs, 2)
         outputs = tf.transpose(outputs, [1, 0, 2])
         return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
 
@@ -162,6 +194,24 @@ class MutilLSTMAndGRU(Model):
         return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
 
 
+class MutilBidirectionalRNN(Model):
+
+    def __init__(self, learning_rate, hidden_layer_count):
+        self.hidden_layer_count = hidden_layer_count
+        super(MutilBidirectionalRNN, self).__init__(learning_rate)
+
+    def create_model(self):
+        x1 = tf.unstack(self.x, self.input_size, 1)
+        stacked_rnn = []
+        stacked_bw_rnn = []
+        for i in range(self.hidden_layer_count):
+            stacked_rnn.append(tf.nn.rnn_cell.LSTMCell(self.hidden_count))
+            stacked_bw_rnn.append(tf.nn.rnn_cell.LSTMCell(self.hidden_count))
+
+        outputs, _, _ = tf.contrib.rnn.stack_bidirectional_rnn(stacked_rnn, stacked_bw_rnn, x1, dtype=tf.float32)
+        return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
+
+
 class MutilDynamicLSTMAndGRU(Model):
 
     def create_model(self):
@@ -169,6 +219,25 @@ class MutilDynamicLSTMAndGRU(Model):
         gru = tf.nn.rnn_cell.GRUCell(self.hidden_count * 2)
         mcell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell, gru])
         outputs, states = tf.nn.dynamic_rnn(mcell, self.x, dtype=tf.float32)
+        outputs = tf.transpose(outputs, [1, 0, 2])
+        return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
+
+
+class MutilDynamicBidirectionalRNN(Model):
+
+    def __init__(self, learning_rate, hidden_layer_count):
+        self.hidden_layer_count = hidden_layer_count
+        super(MutilDynamicBidirectionalRNN, self).__init__(learning_rate)
+
+    def create_model(self):
+        stacked_rnn = []
+        stacked_bw_rnn = []
+        for i in range(self.hidden_layer_count):
+            stacked_rnn.append(tf.nn.rnn_cell.LSTMCell(self.hidden_count))
+            stacked_bw_rnn.append(tf.nn.rnn_cell.LSTMCell(self.hidden_count))
+
+        outputs, _, _ = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(stacked_rnn, stacked_bw_rnn,
+                                                                       self.x, dtype=tf.float32)
         outputs = tf.transpose(outputs, [1, 0, 2])
         return tf.contrib.layers.fully_connected(outputs[-1], self.label_count, activation_fn=None)
 
@@ -181,29 +250,18 @@ def main(argv):
 
     mnist = input_data.read_data_sets(images_dir, one_hot=True)
 
-    # single_lstm = SingleLSTM(FLAGS.learning_rate)
-    # single_lstm.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
-    # single_lstm.estimate(mnist.test)
-
-    # single_gru = SingleGRU(FLAGS.learning_rate)
-    # single_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
-    # single_gru.estimate(mnist.test)
-
-    # single_dynamic_gru = SingleDynamicGRU(FLAGS.learning_rate)
-    # single_dynamic_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
-    # single_dynamic_gru.estimate(mnist.test)
-
-    # mutil_lstm = MutilLSTM(FLAGS.learning_rate, 3)
-    # mutil_lstm.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
-    # mutil_lstm.estimate(mnist.test)
-
-    # mutil_lstm_gru = MutilLSTMAndGRU(FLAGS.learning_rate)
-    # mutil_lstm_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
-    # mutil_lstm_gru.estimate(mnist.test)
-
-    mutil_dynamic_lstm_gru = MutilDynamicLSTMAndGRU(FLAGS.learning_rate)
-    mutil_dynamic_lstm_gru.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
-    mutil_dynamic_lstm_gru.estimate(mnist.test)
+    # model = SingleLSTM(FLAGS.learning_rate)
+    # model = SingleGRU(FLAGS.learning_rate)
+    # model = SingleDynamicGRU(FLAGS.learning_rate)
+    # model = MutilLSTM(FLAGS.learning_rate, 3)
+    # model = MutilLSTMAndGRU(FLAGS.learning_rate)
+    # model = MutilDynamicLSTMAndGRU(FLAGS.learning_rate)
+    # model = SingleDynamicBidirectionalRNN(FLAGS.learning_rate)
+    # model = SingleBidirectionalRNN(FLAGS.learning_rate)
+    # model = MutilBidirectionalRNN(FLAGS.learning_rate, 3)
+    model = MutilDynamicBidirectionalRNN(FLAGS.learning_rate, 3)
+    model.train(mnist.train, FLAGS.epochs, FLAGS.batch_size)
+    model.estimate(mnist.test)
 
 
 if __name__ == '__main__':
