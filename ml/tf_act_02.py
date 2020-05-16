@@ -30,9 +30,13 @@ from tensorflow.examples.tutorials.mnist import input_data
 import pylab
 from absl import app, flags
 import os
-# from tensorflow.contrib.tensorboard.plugins import projector
+from tensorflow.contrib.tensorboard.plugins import projector
+import numpy as np
+import matplotlib.pyplot as plt
 
 default_model_dir = os.path.abspath('./model_tf_act_02/')
+sprite_file = default_model_dir + '/sprite.png'
+meta_file = default_model_dir + '/meta.tsv'
 images_dir = os.path.abspath('data/MNIST')
 feature_pixes = 28 * 28
 label_count = 10
@@ -61,6 +65,35 @@ pred = tf.nn.softmax(tf.matmul(x, weight) + bias, name="pred")
 tf.summary.histogram("pred", pred)
 
 
+def init_visualisation(train_data):
+
+    with open(meta_file, 'w') as f:
+        f.write("index\tlabel\n")
+        for index, label in enumerate(train_data.labels):
+            f.write("%d\t%d\n" % (index, np.where(label == 1)[0][0]))
+
+    train_images = 1 - np.reshape(train_data.images, (-1, 28, 28))
+
+    if isinstance(train_images, list):
+        train_images = np.array(train_images)
+
+    img_h = train_images.shape[1]
+    img_w = train_images.shape[2]
+    n_plots = int(np.ceil(np.sqrt(train_images.shape[0])))
+
+    sprite_image = np.ones((img_h * n_plots, img_w * n_plots))
+    for i in range(n_plots):
+        for j in range(n_plots):
+            this_filter = i * n_plots + j
+            if this_filter < train_images.shape[0]:
+                this_img = train_images[this_filter]
+                sprite_image[i * img_h: (i + 1) * img_h, j * img_w: (j + 1) * img_w] = this_img
+
+    plt.imsave(sprite_file, sprite_image, cmap='gray')
+    plt.imshow(sprite_image, cmap='gray')
+    plt.show()
+
+
 def train_model(train_data, learning_rate, epochs, batch_size):
     cost = tf.reduce_mean(-tf.reduce_sum(y * tf.log(pred), reduction_indices=1))
     optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
@@ -70,16 +103,20 @@ def train_model(train_data, learning_rate, epochs, batch_size):
 
     with tf.Session() as sess:
         saver = tf.train.Saver()
-        sess.run(tf.global_variables_initializer())
 
         # 用于 tensor board
         summary_writer = tf.summary.FileWriter(FLAGS.model_dir, sess.graph)
+        tf.summary.image("images", tf.reshape(x, [-1, 28, 28, 1]))
+        config = projector.ProjectorConfig()
+        embedding = config.embeddings.add()
+        embedding.tensor_name = "pred"
+        embedding.metadata_path = meta_file
+        embedding.sprite.image_path = sprite_file
+        embedding.sprite.single_image_dim.extend([28, 28])
+        projector.visualize_embeddings(summary_writer, config)
         merged_summary = tf.summary.merge_all()
-        # config = projector.ProjectorConfig()
-        # embedding = config.embeddings.add()
-        # embedding.tensor_name = "pred"
-        # projector.visualize_embeddings(summary_writer, config)
 
+        sess.run(tf.global_variables_initializer())
         for epoch in range(epochs):
             avg_cost = 0.0
             total_batch = int(train_data.num_examples / batch_size)
@@ -95,6 +132,7 @@ def train_model(train_data, learning_rate, epochs, batch_size):
             summary_writer.add_summary(sess.run(merged_summary, feed_dict={x: batch_xs, y: batch_ys}), epoch)
 
         saver.save(sess, FLAGS.model_file_dir)
+        summary_writer.close()
         print(" Finished!")
 
 
@@ -133,6 +171,7 @@ def main(argv):
     print(mnist.train.images)
     print(mnist.train.images.shape)
 
+    init_visualisation(mnist.train)
     train_model(mnist.train, FLAGS.learning_rate, FLAGS.epochs, FLAGS.batch_size)
     estimate(mnist.test)
 
