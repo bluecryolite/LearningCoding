@@ -121,7 +121,7 @@ class Model(object):
 
                 if epoch % FLAGS.verbose == 0:
                     print("epoch: {0}: {1}".format(epoch, total_loss))
-                    self.draw(batch_x, batch_y, echo_step, loss_list, predictions_series)
+                    # self.draw(batch_x, batch_y, echo_step, loss_list, predictions_series)
 
             saver.save(sess, file_path)
 

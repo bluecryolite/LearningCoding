@@ -18,12 +18,24 @@
 # ======================================================================================
 # 笔记
 #
-# 190430:
-# 回声信号是线性模型，所以直接用全连接也能实现。同样的，加个隐藏层，能加快学习速度并减少特征集大小。
-# 创建模型时，用fully_connected方法，比直接写wx + b要慢很多呢。
+# 20200617:
+# 同一批样本反复训练，是可行的
 #
-# 190429:
-# 直接在generate_data中，生成feature的数据量
+# 20200617:
+# 训练样本数的增加可持续降低cost。1280万样本，layer_count:16，hidden_count:160可训练至0.03
+# 同一批样本反复训练，无效果。。。。。。不对，应该是epoch的写法有问题。晚上再来写过。
+#
+# 20200615：
+# feature_size为10，梯度在0.075左右消失（学习率0.001，layer_count:8，hidden_count:120）
+#
+# 20200615:
+# 减少feature_size到15，增加feature_count到8万，梯度下降
+#
+# 20200615：
+# 梯度在损失率为0.25左右消失，调整hidden_count、layer_count、learning_rate、feature_size均无效
+#
+# 20200614:
+# 尝试用LSTM来拟合回声信号
 #
 # ======================================================================================
 import tensorflow as tf
@@ -33,17 +45,17 @@ import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 
-default_model_dir = os.path.abspath('./model_tf_act_08/')
+default_model_dir = os.path.abspath('./model_tf_act_15/')
 
-flags.DEFINE_integer('verbose', 10, 'How much debug info to print.')
+flags.DEFINE_integer('verbose', 100, 'How much debug info to print.')
 flags.DEFINE_string('model_dir', default_model_dir, 'Path to saving model files.')
-flags.DEFINE_float('learning_rate', 0.05, '学习率')
-flags.DEFINE_integer('batch_size', 50, '批次大小')
-flags.DEFINE_integer('epochs', 1, '迭代次数')
+flags.DEFINE_float('learning_rate', 0.001, '学习率')
+flags.DEFINE_integer('batch_size', 1000, '批次大小')
+flags.DEFINE_integer('epochs', 128, '迭代次数')
 flags.DEFINE_bool('draw', True, '是否展示图形')
 flags.DEFINE_integer('state_size', 40, '隐藏层增加的特征数量')
 flags.DEFINE_integer('feature_size', 40, '特征数量')
-flags.DEFINE_integer('feature_count', 8000, '特征集大小')
+flags.DEFINE_integer('feature_count', 1000000, '特征集大小')
 
 
 FLAGS = flags.FLAGS
@@ -64,62 +76,82 @@ class Model(object):
 
     def __init__(self, learning_rate, feature_size, state_size):
         self.feature_size = feature_size
-        self.state_size = state_size
-        num_classes = 1
+        self.hidden_layer_count = 4
+        self.hidden_count = 32
 
-        self.batchX_placeholder = tf.placeholder(tf.float32, [None, self.feature_size])
+        self.batchX_placeholder = tf.placeholder(tf.float32, [None, self.feature_size, 1])
         self.batchY_placeholder = tf.placeholder(tf.float32, [None, self.feature_size])
         # self.init_state = tf.placeholder(tf.float32, [None, self.feature_size * self.state_size])
 
         #self.current_state = self.init_state
         self.predictions_series = []
-        losses = []
 
-        logits = tf.contrib.layers.fully_connected(self.batchX_placeholder, self.feature_size + state_size, activation_fn=tf.nn.tanh)
-        logits = tf.contrib.layers.fully_connected(logits, self.feature_size, activation_fn=None)
-        loss = (self.batchY_placeholder - logits) ** 2
-        self.predictions_series.append(logits)
+        self.x1 = tf.unstack(self.batchX_placeholder, self.feature_size, axis=1)
+
+        stacked_rnn = []
+
+        for i in range(self.hidden_layer_count):
+            stacked_rnn.append(tf.nn.rnn_cell.LSTMCell(self.hidden_count))
+        mcell = tf.nn.rnn_cell.MultiRNNCell(stacked_rnn)
+
+        outputs, states = tf.nn.static_rnn(mcell, self.x1, dtype=tf.float32)
+
+        self.logits = tf.contrib.layers.fully_connected(outputs[-1], self.feature_size, activation_fn=None)
+
+        loss = (self.batchY_placeholder - self.logits) ** 2
+        self.predictions_series.append(self.logits)
 
         self.total_loss = tf.reduce_mean(loss)
         self.optimizer = tf.train.AdamOptimizer(learning_rate).minimize(self.total_loss)
 
-    def train(self, features, labels, batch_size, loss_list, echo_step):
-        file_path = FLAGS.model_dir + 'tf_act_10'
+
+    def train(self, features, labels, batch_size, loss_list, epochs):
+        file_path = FLAGS.model_dir + 'tf_act_15'
         with tf.Session() as sess:
+            '''
             saver = tf.train.Saver()
             if os.path.exists(FLAGS.model_dir):
                 saver.restore(sess, file_path)
             else:
                 os.mkdir(FLAGS.model_dir)
                 sess.run(tf.global_variables_initializer())
+            '''
+            sess.run(tf.global_variables_initializer())
 
             point_count = len(features)
             batch_count = point_count // batch_size + 0 if point_count % batch_size == 0 else 1
+            for m in range(epochs):
+                print("batch: {0}".format(m))
 
-            for index in range(batch_count):
-                start_idx = index * batch_size
-                end_idx = start_idx + batch_size
+                for index in range(batch_count):
+                    start_idx = index * batch_size
+                    end_idx = start_idx + batch_size
 
-                batch_x = features[start_idx:end_idx]
-                batch_y = labels[start_idx:end_idx]
+                    batch_x = features[start_idx:end_idx]
+                    batch_x = np.reshape(batch_x, [batch_x.shape[0], batch_x.shape[1], 1])
+                    batch_y = labels[start_idx:end_idx]
 
-                # if current_state.shape == (6, 0) or batch_y.shape == (6, 0) or batch_x.shape == (6, 0):
-                #    continue
+                    # if current_state.shape == (6, 0) or batch_y.shape == (6, 0) or batch_x.shape == (6, 0):
+                    #    continue
 
-                total_loss, _, predictions_series = sess.run(
-                    [self.total_loss, self.optimizer, self.predictions_series],
-                    feed_dict={
-                        self.batchX_placeholder: batch_x,
-                        self.batchY_placeholder: batch_y
-                    }
-                )
-                loss_list.append(total_loss)
+                    # pred = sess.run(self.logits, feed_dict={self.batchX_placeholder: batch_x, self.batchY_placeholder: batch_y})
 
-                if index % FLAGS.verbose == 0:
-                    print("epoch: {0}: {1}".format(index, total_loss))
-                    # self.draw(batch_x, batch_y, echo_step, loss_list, predictions_series)
+                    total_loss, _, predictions_series, pred = sess.run(
+                        [self.total_loss, self.optimizer, self.predictions_series, self.logits],
+                        feed_dict={
+                            self.batchX_placeholder: batch_x,
+                            self.batchY_placeholder: batch_y
+                        }
+                    )
+                    loss_list.append(total_loss)
 
-            saver.save(sess, file_path)
+                    if index % FLAGS.verbose == 0:
+                        print("epoch: {0}: {1}".format(index, total_loss))
+
+                if m > 0 and m % 8 == 0:
+                    self.draw(batch_x, batch_y, m, loss_list, predictions_series)
+
+            # saver.save(sess, file_path)
 
     def draw(self, batch_x, batch_y, echo_step, loss_list, predictions_series):
         batch_count = len(batch_x)
@@ -170,10 +202,8 @@ def main(argv):
     point_count = FLAGS.feature_count * FLAGS.feature_size
     model = Model(FLAGS.learning_rate, FLAGS.feature_size, FLAGS.state_size)
     loss_list = []
-    for m in range(FLAGS.epochs):
-        print("batch: {0}".format(m))
-        x, y = generate_data(point_count, echo_step, FLAGS.feature_size)
-        model.train(x, y, FLAGS.batch_size, loss_list, echo_step)
+    x, y = generate_data(point_count, echo_step, FLAGS.feature_size)
+    model.train(x, y, FLAGS.batch_size, loss_list, FLAGS.epochs)
 
     plt.ioff()
     plt.show()
